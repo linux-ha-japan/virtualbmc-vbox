@@ -12,7 +12,7 @@
 
 import xml.etree.ElementTree as ET
 
-import libvirt
+#import libvirt
 import pyghmi.ipmi.bmc as bmc
 
 from virtualbmc import exception

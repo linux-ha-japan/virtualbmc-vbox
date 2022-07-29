@@ -13,11 +13,23 @@
 import os
 import sys
 
-import libvirt
+#import libvirt
 
 from virtualbmc import exception
 
 
+# dummy class/funcsions to remove libvirt dependensy
+class libvirt_open(object):
+    def __init__(self, uri, sasl_username=None, sasl_password=None,
+                 readonly=False):
+        pass
+def get_libvirt_domain(conn, domain):
+    pass
+def check_libvirt_connection_and_domain(uri, domain, sasl_username=None,
+                                        sasl_password=None):
+    pass
+
+comment_out = ''' remove libvirt dependency
 class libvirt_open(object):
 
     def __init__(self, uri, sasl_username=None, sasl_password=None,
@@ -69,7 +81,7 @@ def check_libvirt_connection_and_domain(uri, domain, sasl_username=None,
     with libvirt_open(uri, readonly=True, sasl_username=sasl_username,
                       sasl_password=sasl_password) as conn:
         get_libvirt_domain(conn, domain)
-
+'''
 
 def is_pid_running(pid):
     try:
