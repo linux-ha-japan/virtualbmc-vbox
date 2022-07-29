@@ -21,7 +21,8 @@ from virtualbmc import config as vbmc_config
 from virtualbmc import exception
 from virtualbmc import log
 from virtualbmc import utils
-from virtualbmc.vbmc import VirtualBMC
+#from virtualbmc.vbmc import VirtualBMC
+from virtualbmc.vboxvbmc import VBoxVirtualBMC as VirtualBMC
 
 LOG = log.get_logger()
 
