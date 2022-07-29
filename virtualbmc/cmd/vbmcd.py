@@ -89,7 +89,7 @@ def main(argv=sys.argv[1:]):
             if pid > 0:
                 return 0
 
-            return wrap_with_pidfile(control.application, pid)
+            return wrap_with_pidfile(control.application, os.getpid())
 
 
 if __name__ == '__main__':
