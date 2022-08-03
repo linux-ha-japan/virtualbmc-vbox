@@ -38,7 +38,8 @@ IPMI_COMMAND_NODE_BUSY = 0xC0
 # Invalid data field in request
 IPMI_INVALID_DATA = 0xcc
 
-
+class VBoxError(Exception):
+    pass
 
 class VBoxVirtualBMC(bmc.Bmc):
 
@@ -82,6 +83,9 @@ class VBoxVirtualBMC(bmc.Bmc):
                                    universal_newlines=True)
         status = process.wait()
         (out, err) = process.communicate()
+        if status != 0:
+            raise VBoxError('VBoxManage failed (%(status)d): %(error)s'
+                            % {'status': status, 'error': err})
         return status, out, err
 
     def get_list_vms(self):
@@ -101,18 +105,22 @@ class VBoxVirtualBMC(bmc.Bmc):
                 result[dom.group(1)] = POWERON
 
         return result
+    def get_vm_status(self):
+        try:
+            vms = self.get_list_vms()
+            return vms[self.domain_name]
+        except KeyError:
+            raise VBoxError('domain %(domain)s not found' % {'domain': self.domain_name})
 
     def get_power_state(self):
         LOG.debug('Get power state called for domain %(domain)s',
                   {'domain': self.domain_name})
         try:
-            vms = self.get_list_vms()
-            return vms[self.domain_name]
-        except Exception as e:
+            return self.get_vm_status()
+        except VBoxError as e:
             msg = ('Error getting the power state of domain %(domain)s. '
-                   '%(type)s: %(error)s' % {'domain': self.domain_name,
-                                            'type': type(e).__name__,
-                                            'error': eaxs})
+                   'Error: %(error)s' % {'domain': self.domain_name,
+                                         'error': e})
             LOG.error(msg)
             raise exception.VirtualBMCError(message=msg)
 
@@ -120,8 +128,9 @@ class VBoxVirtualBMC(bmc.Bmc):
         LOG.debug('Power off called for domain %(domain)s',
                   {'domain': self.domain_name})
         try:
-            status, out, err = self.run_vboxmanage("controlvm " + self.domain_name + " poweroff")
-        except Exception as e:
+            if self.get_vm_status() == POWERON:
+                status, out, err = self.run_vboxmanage("controlvm " + self.domain_name + " poweroff")
+        except VBoxError as e:
             LOG.error('Error powering off the domain %(domain)s. '
                       'Error: %(error)s', {'domain': self.domain_name,
                                            'error': e})
@@ -132,9 +141,9 @@ class VBoxVirtualBMC(bmc.Bmc):
         LOG.debug('Power on called for domain %(domain)s',
                   {'domain': self.domain_name})
         try:
-            status, out, err = self.run_vboxmanage("startvm " + self.domain_name + " --type headless")
-            LOG.debug('vbox: power_on %s, %s, %s', str(status), str(out), str(err))
-        except Exception as e:
+            if self.get_vm_status() == POWEROFF:
+                status, out, err = self.run_vboxmanage("startvm " + self.domain_name + " --type headless")
+        except VBoxError as e:
             LOG.error('Error powering on the domain %(domain)s. '
                       'Error: %(error)s', {'domain': self.domain_name,
                                            'error': e})
@@ -145,8 +154,9 @@ class VBoxVirtualBMC(bmc.Bmc):
         LOG.debug('Soft power off called for domain %(domain)s',
                   {'domain': self.domain_name})
         try:
-            status, out, err = self.run_vboxmanage("controlvm " + self.domain_name + " acpipowerbutton")
-        except Exception as e:
+            if self.get_vm_status() == POWERON:
+                status, out, err = self.run_vboxmanage("controlvm " + self.domain_name + " acpipowerbutton")
+        except VBoxError as e:
             LOG.error('Error soft powering off the domain %(domain)s. '
                       'Error: %(error)s', {'domain': self.domain_name,
                                            'error': e})
@@ -157,8 +167,9 @@ class VBoxVirtualBMC(bmc.Bmc):
         LOG.debug('Power reset called for domain %(domain)s',
                   {'domain': self.domain_name})
         try:
-            status, out, err = self.run_vboxmanage("controlvm " + self.domain_name + " reset")
-        except Exception as e:
+            if self.get_vm_status() == POWERON:
+                status, out, err = self.run_vboxmanage("controlvm " + self.domain_name + " reset")
+        except VBoxError as e:
             LOG.error('Error reseting the domain %(domain)s. '
                       'Error: %(error)s', {'domain': self.domain_name,
                                            'error': e})
@@ -169,10 +180,11 @@ class VBoxVirtualBMC(bmc.Bmc):
         LOG.debug('Power cycle called for domain %(domain)s',
                   {'domain': self.domain_name})
         try:
-            status, out, err = self.run_vboxmanage("controlvm " + self.domain_name + " poweroff")
-            time.sleep(1)
-            status, out, err = self.run_vboxmanage("startvm " + self.domain_name + " --type headless")
-        except Exception as e:
+            if self.get_vm_status() == POWERON:
+                status, out, err = self.run_vboxmanage("controlvm " + self.domain_name + " poweroff")
+                time.sleep(1)
+                status, out, err = self.run_vboxmanage("startvm " + self.domain_name + " --type headless")
+        except VBoxError as e:
             LOG.error('Error power cycle the domain %(domain)s. '
                       'Error: %(error)s' % {'domain': self.domain_name,
                                             'error': e})
