@@ -72,7 +72,7 @@ class VBoxVirtualBMC(bmc.Bmc):
         self.vboxmanage_cmd = [self.vboxmanage_path]
         if self.vbox_user:
             if system == 'Linux': # assumes CentOS/RHEL
-                self.vboxmanage_cmd = ['runuser', '-u', self.vbox_user, self.vboxmanage_path]
+                self.vboxmanage_cmd = ['runuser', '-u', self.vbox_user, '--', self.vboxmanage_path]
             else:		  # assumes Darwin
                 self.vboxmanage_cmd = ['su', self.vbox_user, self.vboxmanage_path]
         LOG.debug('vbox: vboxmanage_cmd = %s', self.vboxmanage_cmd)
