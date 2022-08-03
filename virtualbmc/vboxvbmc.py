@@ -1,4 +1,15 @@
-import os
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+
 import platform
 import re
 import subprocess
@@ -8,10 +19,9 @@ import xml.etree.ElementTree as ET
 
 import pyghmi.ipmi.bmc as bmc
 
+from virtualbmc import exception
 from virtualbmc import log
 from virtualbmc import utils
-from virtualbmc import exception
-
 
 LOG = log.get_logger()
 
@@ -19,15 +29,26 @@ LOG = log.get_logger()
 POWEROFF = 0
 POWERON = 1
 
+# From the IPMI - Intelligent Platform Management Interface Specification
+# Second Generation v2.0 Document Revision 1.1 October 1, 2013
+# https://www.intel.com/content/dam/www/public/us/en/documents/product-briefs/ipmi-second-gen-interface-spec-v2-rev1-1.pdf
+#
+# Command failed and can be retried
+IPMI_COMMAND_NODE_BUSY = 0xC0
+# Invalid data field in request
+IPMI_INVALID_DATA = 0xcc
+
+
+
 class VBoxVirtualBMC(bmc.Bmc):
 
     def __init__(self, username, password, port, address,
                  domain_name, libvirt_uri, libvirt_sasl_username=None,
                  libvirt_sasl_password=None, **kwargs):
-        # TODO: remove livbirt_* and generalize parameters list
         super(VBoxVirtualBMC, self).__init__({username: password},
                                          port=port, address=address)
         self.domain_name = domain_name
+
         self.vbox_user = None
         self.vboxmanage_path = 'VBoxManage' # Linux and Darwin should work with PATH
         system = platform.system()
@@ -67,14 +88,12 @@ class VBoxVirtualBMC(bmc.Bmc):
         result = {}
         regex = re.compile(r'^\"(.*)\" \{(.*)\}$')
 
-        #status, out, err = self.run_command(self.vbox_cmdline("list vms"))
         status, out, err = self.run_vboxmanage("list vms")
         for line in out.splitlines():
             dom = regex.search(line)
             if dom is not None:
                 result[dom.group(1)] = POWEROFF
 
-        #status, out, err = self.run_command(self.vbox_cmdline("list runningvms"))
         status, out, err = self.run_vboxmanage("list runningvms")
         for line in out.splitlines():
             dom = regex.search(line)
@@ -84,43 +103,71 @@ class VBoxVirtualBMC(bmc.Bmc):
         return result
 
     def get_power_state(self):
-        LOG.debug('Get power state called for domain %s', self.domain_name)
+        LOG.debug('Get power state called for domain %(domain)s',
+                  {'domain': self.domain_name})
         try:
             vms = self.get_list_vms()
             return vms[self.domain_name]
         except Exception as e:
-            import traceback
-            LOG.error('Error getting the power state of domain %(domain)s. '
-                      '%(type)s: %(error)s', {'domain': self.domain_name,
-                                              'type': type(e).__name__,
-                                              'error': e})
-            # Command not supported in present state
-            return 0xd5
+            msg = ('Error getting the power state of domain %(domain)s. '
+                   '%(type)s: %(error)s' % {'domain': self.domain_name,
+                                            'type': type(e).__name__,
+                                            'error': eaxs})
+            LOG.error(msg)
+            raise exception.VirtualBMCError(message=msg)
 
     def power_off(self):
-        LOG.debug('Power off called for domain %s', self.domain_name)
+        LOG.debug('Power off called for domain %(domain)s',
+                  {'domain': self.domain_name})
         try:
             status, out, err = self.run_vboxmanage("controlvm " + self.domain_name + " poweroff")
         except Exception as e:
             LOG.error('Error powering off the domain %(domain)s. '
-                      'Error: %(error)s' % {'domain': self.domain_name,
-                                            'error': e})
-            # Command not supported in present state
-            return 0xd5
+                      'Error: %(error)s', {'domain': self.domain_name,
+                                           'error': e})
+            # Command failed, but let client to retry
+            return IPMI_COMMAND_NODE_BUSY
 
     def power_on(self):
-        LOG.debug('Power on called for domain %s', self.domain_name)
+        LOG.debug('Power on called for domain %(domain)s',
+                  {'domain': self.domain_name})
         try:
             status, out, err = self.run_vboxmanage("startvm " + self.domain_name + " --type headless")
+            LOG.debug('vbox: power_on %s, %s, %s', str(status), str(out), str(err))
         except Exception as e:
-            LOG.error('Error powering off the domain %(domain)s. '
-                      'Error: %(error)s' % {'domain': self.domain_name,
-                                            'error': e})
+            LOG.error('Error powering on the domain %(domain)s. '
+                      'Error: %(error)s', {'domain': self.domain_name,
+                                           'error': e})
+            # Command failed, but let client to retry
+            return IPMI_COMMAND_NODE_BUSY
+
+    def power_shutdown(self):
+        LOG.debug('Soft power off called for domain %(domain)s',
+                  {'domain': self.domain_name})
+        try:
+            status, out, err = self.run_vboxmanage("controlvm " + self.domain_name + " acpipowerbutton")
+        except Exception as e:
+            LOG.error('Error soft powering off the domain %(domain)s. '
+                      'Error: %(error)s', {'domain': self.domain_name,
+                                           'error': e})
+            # Command failed, but let client to retry
+            return IPMI_COMMAND_NODE_BUSY
+
+    def power_reset(self):
+        LOG.debug('Power reset called for domain %(domain)s',
+                  {'domain': self.domain_name})
+        try:
+            status, out, err = self.run_vboxmanage("controlvm " + self.domain_name + " reset")
+        except Exception as e:
+            LOG.error('Error reseting the domain %(domain)s. '
+                      'Error: %(error)s', {'domain': self.domain_name,
+                                           'error': e})
             # Command not supported in present state
-            return 0xd5
+            return IPMI_COMMAND_NODE_BUSY
 
     def power_cycle(self):
-        LOG.debug('Power cycle called for domain %s', self.domain_name)
+        LOG.debug('Power cycle called for domain %(domain)s',
+                  {'domain': self.domain_name})
         try:
             status, out, err = self.run_vboxmanage("controlvm " + self.domain_name + " poweroff")
             time.sleep(1)
@@ -130,41 +177,4 @@ class VBoxVirtualBMC(bmc.Bmc):
                       'Error: %(error)s' % {'domain': self.domain_name,
                                             'error': e})
             # Command not supported in present state
-            return 0xd5
-
-    def power_reset(self):
-        LOG.debug('Power reset called for domain %s', self.domain_name)
-        try:
-            status, out, err = self.run_vboxmanage("controlvm " + self.domain_name + " reset")
-        except Exception as e:
-            LOG.error('Error power reset the domain %(domain)s. '
-                      'Error: %(error)s' % {'domain': self.domain_name,
-                                            'error': e})
-            # Command not supported in present state
-            return 0xd5
-
-    def power_shutdown(self):
-        LOG.debug('Soft power off called for domain %s', self.domain_name)
-        try:
-            status, out, err = self.run_vboxmanage("controlvm " + self.domain_name + " acpipowerbutton")
-        except Exception as e:
-            LOG.error('Error powering off the domain %(domain)s. '
-                      'Error: %(error)s' % {'domain': self.domain_name,
-                                            'error': e})
-            # Command not supported in present state
-            return 0xd5
-
-#    def listen(cls, timeout=30):
-#        import pyghmi.ipmi.private.session as ipmisession
-#        while True:
-#            r = ipmisession.Session.wait_for_rsp(timeout)
-#            LOG.info('listen.wait_for_rsp() = %s' % (r))
-
-def main():
-    vbmc = VBoxVirtualBMC("pacemaker", "pacemakerpass", 623, "192.168.200.91", "node01")
-    LOG.info('Virtual BMC for domain %s started', 'node01')
-    vbmc.listen(timeout=300)
-
-
-if __name__ == '__main__':
-    main()
+            return IPMI_COMMAND_NODE_BUSY
