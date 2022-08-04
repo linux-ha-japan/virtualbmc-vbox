@@ -169,11 +169,14 @@ class VBoxVirtualBMC(bmc.Bmc):
         try:
             if self.get_vm_status() == POWERON:
                 status, out, err = self.run_vboxmanage("controlvm " + self.domain_name + " reset")
+            else:
+                # Command not supported in present state
+                return 0xd5
         except VBoxError as e:
             LOG.error('Error reseting the domain %(domain)s. '
                       'Error: %(error)s', {'domain': self.domain_name,
                                            'error': e})
-            # Command not supported in present state
+            # Command failed, but let client to retry
             return IPMI_COMMAND_NODE_BUSY
 
     def power_cycle(self):
@@ -182,11 +185,11 @@ class VBoxVirtualBMC(bmc.Bmc):
         try:
             if self.get_vm_status() == POWERON:
                 status, out, err = self.run_vboxmanage("controlvm " + self.domain_name + " poweroff")
-                time.sleep(1)
-                status, out, err = self.run_vboxmanage("startvm " + self.domain_name + " --type headless")
+            time.sleep(1)
+            status, out, err = self.run_vboxmanage("startvm " + self.domain_name + " --type headless")
         except VBoxError as e:
             LOG.error('Error power cycle the domain %(domain)s. '
                       'Error: %(error)s' % {'domain': self.domain_name,
                                             'error': e})
-            # Command not supported in present state
+            # Command failed, but let client to retry
             return IPMI_COMMAND_NODE_BUSY
