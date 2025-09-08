@@ -22,7 +22,7 @@ from virtualbmc import exception
 from virtualbmc import log
 from virtualbmc import utils
 #from virtualbmc.vbmc import VirtualBMC
-from virtualbmc.vboxvbmc import VBoxVirtualBMC as VirtualBMC
+from virtualbmc.hypervvbmc import HyperVVirtualBMC as VirtualBMC
 
 LOG = log.get_logger()
 
