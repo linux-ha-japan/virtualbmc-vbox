@@ -158,6 +158,10 @@ class AddCommand(Command):
                             default=None,
                             help=('The libvirt SASL password; defaults to '
                                   'None'))
+        parser.add_argument('--hypervisor',
+                            dest='hypervisor',
+                            default=None,
+                            help=('libvirt|vbox|hyperv'))
         return parser
 
     def take_action(self, args):

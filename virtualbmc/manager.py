@@ -22,7 +22,8 @@ from virtualbmc import exception
 from virtualbmc import log
 from virtualbmc import utils
 #from virtualbmc.vbmc import VirtualBMC
-from virtualbmc.hypervvbmc import HyperVVirtualBMC as VirtualBMC
+from virtualbmc.vboxvbmc import VBoxVirtualBMC
+from virtualbmc.hypervvbmc import HyperVVirtualBMC
 
 LOG = log.get_logger()
 
@@ -40,7 +41,7 @@ class VirtualBMCManager(object):
 
     VBMC_OPTIONS = ['username', 'password', 'address', 'port',
                     'domain_name', 'libvirt_uri', 'libvirt_sasl_username',
-                    'libvirt_sasl_password', 'active']
+                    'libvirt_sasl_password', 'hypervisor', 'active']
 
     def __init__(self):
         super(VirtualBMCManager, self).__init__()
@@ -119,8 +120,14 @@ class VirtualBMCManager(object):
             show_options = utils.mask_dict_password(bmc_config)
 
         try:
-            vbmc = VirtualBMC(**bmc_config)
-
+            if bmc_config['hypervisor'] == 'vbox':
+                vbmc = VBoxVirtualBMC(**bmc_config)
+            elif bmc_config['hypervisor'] == 'hyperv':
+                vbmc = HyperVVirtualBMC(**bmc_config)
+            #elif bmc_config['hypervisor'] == 'libvirt':
+            #    vbmc = VirtualBMC(**bmc_config)
+            else:
+                raise Exception('Unknown hypervisor: %s', bmc_config['hypervisor'])
         except Exception as ex:
             LOG.exception(
                 'Error running vBMC with configuration '
@@ -254,6 +261,7 @@ class VirtualBMCManager(object):
             LOG.error(msg)
             return 1, msg
 
+        hypervisor = kwargs.get('hypervisor') or CONF['default']['hypervisor']
         try:
             self._store_config(domain_name=domain_name,
                                username=username,
@@ -263,6 +271,7 @@ class VirtualBMCManager(object):
                                libvirt_uri=libvirt_uri,
                                libvirt_sasl_username=libvirt_sasl_username,
                                libvirt_sasl_password=libvirt_sasl_password,
+                               hypervisor=hypervisor,
                                active=False)
 
         except Exception as ex:
